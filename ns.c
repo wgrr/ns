@@ -26,7 +26,6 @@ static int procstart(void*);
 
 static noreturn void sysfatal(char*);
 static noreturn void usage(void);
-static void dupargv(struct proc *, char **);
 
 static char procstack[8192];
 
@@ -58,7 +57,7 @@ procstart(void *args)
 int
 main(int argc, char **argv)
 {
-	int pid, pstatus;
+	int pid, pstatus, i;
 	char *topofstack;
 	struct proc *newp;
 
@@ -77,8 +76,10 @@ main(int argc, char **argv)
 	if (newp->argv == NULL)
 		sysfatal("newp->argv malloc");
 
-	/* skip argv[0] */
-	dupargv(newp, argv+1);
+	/* copy argv, argv[0] is skipped */
+	for (i = 0; i < newp->argc; i++)
+		newp->argv[i] = strdup(argv[i+1]);
+	newp->argv[newp->argc] = NULL;
 
 	topofstack = procstack + sizeof procstack;
 	/* TODO: systemd crap requiments to really isolate mounts
@@ -95,6 +96,7 @@ main(int argc, char **argv)
 			CLONE_VM|
 			SIGCHLD,
 			newp);
+
 	if (pid < 0)
 		sysfatal("clone");
 	if (waitpid(pid, &pstatus, 0) < 0)
@@ -103,20 +105,6 @@ main(int argc, char **argv)
 	printf("proc %d exited with %d\n", pid, ((unsigned)pstatus >> 8)&0xff);
 	fflush(stdout);
 	return 0;
-}
-
-static void
-dupargv(struct proc *p, char **src)
-{
-	int i;
-
-	for (i = 0; i < p->argc; i++) {
-		p->argv[i] = malloc(strlen(src[i])+1);
-		if (p->argv[i] ==  NULL)
-			sysfatal("dupargv malloc");
-		strcpy(p->argv[i], src[i]);
-	}
-	p->argv[p->argc] = NULL;
 }
 
 static noreturn void 
