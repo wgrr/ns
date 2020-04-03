@@ -1,6 +1,8 @@
 SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 
+CFLAGS = -Wall -Werror -Wextra -pedantic
+
 AOUT = ns
 
 all: $(AOUT)

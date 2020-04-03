@@ -16,18 +16,13 @@
 
 #include <unistd.h>
 
-struct proc {
-	int argc;
-	char **argv;
-};
-
 static void procinit(void);
-static int procstart(void*);
+static noreturn int procstart(void*);
 
 static noreturn void sysfatal(char*);
 static noreturn void usage(void);
 
-static char procstack[8192];
+static char procstack[8192 * 4];
 
 static void
 procinit()
@@ -42,60 +37,57 @@ procinit()
 		sysfatal("proc mount");
 }
 
-static int
-procstart(void *args)
+static noreturn int
+procstart(void *a)
 {
-	struct proc *p = args;
+	char **argv = a;
 
 	procinit();
-
-	execve(p->argv[0], p->argv+1, NULL);
-	sysfatal("proc execve");
-	return EXIT_FAILURE;
+	execve(argv[0], argv+1, NULL);
+	do exit(EXIT_FAILURE); while(1);
 }
 
+/* missing: network namespace setup,
+ *          user/group namespace setup
+ *          cgroup namespace setup
+ *          devtmpfs /dev
+ *          sysfs /sys
+ */
 int
 main(int argc, char **argv)
 {
-	int pid, pstatus, i;
-	char *topofstack;
-	struct proc *newp;
+	int pid, pstatus;
+	char *topofstack, **newargv;
 
 	if (argc < 2)
 		usage();
 
-	newp = malloc(sizeof *newp);
-	if (newp == NULL)
-		sysfatal("newp malloc");
-
-	/* -1 because argv[0] is ignored */
-	newp->argc = argc - 1;
-
-	/* +1 for NULL, execve requirement */
-	newp->argv = calloc(newp->argc + 1, sizeof *newp->argv);
-	if (newp->argv == NULL)
-		sysfatal("newp->argv malloc");
-
-	/* copy argv, argv[0] is skipped */
-	for (i = 0; i < newp->argc; i++)
-		newp->argv[i] = strdup(argv[i+1]);
-	newp->argv[newp->argc] = NULL;
+	/* skip argv[0] */
+	newargv = argv + 1;
 
 	topofstack = procstack + sizeof procstack;
-	/* TODO: systemd crap requiments to really isolate mounts
-	 * unshare(CLONE_NEWNS);
+
+	/* systemd crap shares NEWNS by default to all processes in,
+	 * order to isolate mounts uncomment the following lines.
+	 * NOTE: it requires root previleges.
+	if (unshare(CLONE_NEWNS) < 0)
+		sysfatal("unshare");
 	if (mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL) < 0)
 		sysfatal("mount");
-	*/
+	 */
+
 	pid = clone(&procstart, topofstack,
-			CLONE_NEWUSER|
-			CLONE_NEWPID| /* isolate processes */
-			CLONE_NEWUTS| /* isolate hostname */
-			CLONE_NEWNS|  /* isolate mounts */
+			CLONE_NEWCGROUP| /* hides parent cgroup from child */
+			CLONE_NEWUSER|   /* hides parent user from child */
+			CLONE_NEWIPC|    /* hides parent ipc from child */
+			CLONE_NEWNET|    /* hides parent network stack from child */
+			CLONE_NEWPID|    /* hides parent processes from child */
+			CLONE_NEWUTS|    /* hides parent hostname from child */
+			CLONE_NEWNS|     /* hides parent mounts from child */
 			CLONE_VFORK|
 			CLONE_VM|
 			SIGCHLD,
-			newp);
+			newargv);
 
 	if (pid < 0)
 		sysfatal("clone");
