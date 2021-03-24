@@ -1,0 +1,7 @@
+Currently, ns start a new proc under an isoalted alpine linux namespace.
+
+this could be even more restrict environment for static linked programs
+
+ns is licensed under GPL v3 or later, the alpine_3.11 software contained
+in this repository is unrelated to ns license and is licensed on under
+its own terms, you check alpinelinux.org for details.
